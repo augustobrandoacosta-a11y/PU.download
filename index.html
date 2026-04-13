@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulsar MP3 Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            background: #0f172a; 
+            color: #f8fafc; 
+            margin: 0; 
+        }
+        .container { 
+            background: #1e293b; 
+            padding: 30px; 
+            border-radius: 16px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; color: #38bdf8; }
+        .control-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; margin-bottom: 8px; font-size: 0.9rem; color: #94a3b8; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .value-display { font-weight: bold; color: #38bdf8; float: right; }
+        button { 
+            background: #0284c7; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 1rem; 
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        button:hover { background: #0369a1; }
+        button:active { transform: scale(0.98); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Pulsar Downloader</h1>
+        
+        <div class="control-group">
+            <label>Frequency: <span id="freqVal" class="value-display">440</span> Hz</label>
+            <input type="range" id="freq" min="40" max="2000" value="440">
+        </div>
+        
+        <div class="control-group">
+            <label>Pulse Rate: <span id="rateVal" class="value-display">200</span> ms</label>
+            <input type="range" id="rate" min="50" max="1000" value="200">
+        </div>
+
+        <button id="downloadBtn">Download .MP3</button>
+    </div>
+
+    <script>
+        const freqInput = document.getElementById('freq');
+        const rateInput = document.getElementById('rate');
+        const freqVal = document.getElementById('freqVal');
+        const rateVal = document.getElementById('rateVal');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // Update UI numbers
+        freqInput.oninput = () => freqVal.textContent = freqInput.value;
+        rateInput.oninput = () => rateVal.textContent = rateInput.value;
+
+        downloadBtn.onclick = () => {
+            const frequency = parseFloat(freqInput.value);
+            const pulseRate = parseFloat(rateInput.value) / 1000;
+            const duration = 2.0; // Seconds
+            const sampleRate = 44100;
+            const numSamples = Math.floor(sampleRate * duration);
+            
+            // 1. Generate the audio data (Float32)
+            const samples = new Float32Array(numSamples);
+            for (let i = 0; i < numSamples; i++) {
+                let t = i / sampleRate;
+                // Creating the sharp "pulse" decay
+                let envelope = Math.exp(-((t % pulseRate) / (pulseRate * 0.25)));
+                samples[i] = Math.sin(2 * Math.PI * frequency * t) * envelope;
+            }
+
+            // 2. Setup MP3 Encoder
+            const mp3encoder = new lamejs.Mp3Encoder(1, sampleRate, 128);
+            const mp3Data = [];
+
+            // 3. Convert Float32 to Int16 for LameJS
+            const int16Samples = new Int16Array(samples.length);
+            for (let i = 0; i < samples.length; i++) {
+                let s = Math.max(-1, Math.min(1, samples[i]));
+                int16Samples[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+
+            // 4. Encode in chunks
+            const sampleBlockSize = 1152;
+            for (let i = 0; i < int16Samples.length; i += sampleBlockSize) {
+                const chunk = int16Samples.subarray(i, i + sampleBlockSize);
+                const mp3buf = mp3encoder.encodeBuffer(chunk);
+                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            }
+
+            const finishBuffer = mp3encoder.flush();
+            if (finishBuffer.length > 0) mp3Data.push(finishBuffer);
+
+            // 5. Create Blob and Download
+            const blob = new Blob(mp3Data, { type: 'audio/mp3' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pulsar_${frequency}hz.mp3`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+    </script>
+</body>
+  </html>
